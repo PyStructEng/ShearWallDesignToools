@@ -1,9 +1,22 @@
 import pandas as pd
 import numpy as np
 import xlwings as xw
+import logging
+import os
 
 from .data import HOLDDOWN_DF, ROD_DATA, SHEAR_CLIP_DATA_TABLE, BEARING_PLATE_DATA
 from .calculations import *
+
+def _configure_logging(ws):
+    """Configure and return a logger based on environment or Excel setting."""
+    level_str = os.getenv("LOG_LEVEL") or ws.range("B3").value or "INFO"
+    if isinstance(level_str, str):
+        level = getattr(logging, level_str.upper(), logging.INFO)
+    else:
+        level = logging.INFO
+    logging.basicConfig(level=level, format="%(levelname)s:%(name)s:%(message)s")
+    return logging.getLogger(__name__)
+
 
 def indv_shear_wall_analysis(workbook_path=None):
     #___________________________________________________
@@ -11,6 +24,8 @@ def indv_shear_wall_analysis(workbook_path=None):
     file_name = workbook_path or xw.Book.caller().fullname
     wb = xw.Book(file_name)
     ws = wb.sheets.active
+
+    logger = _configure_logging(ws)
 
     df = ws['C9:Z17'].options(pd.DataFrame).value
     # df
@@ -30,7 +45,7 @@ def indv_shear_wall_analysis(workbook_path=None):
 
     # Get number of storeys from cell F6
     no_of_storey = int(ws.range('F6').value)
-    print("No. of storeys:", no_of_storey)
+    logger.info("No. of storeys: %s", no_of_storey)
 
     # Define start row and calculate end row based on no_of_storey
     start_row_geom = 11
@@ -132,17 +147,17 @@ def indv_shear_wall_analysis(workbook_path=None):
     # Read uniform dead and live loads
     uniform_dead_list = np.array(ws.range(f'G{start_row_load}:G{end_row_load}').value)
     uniform_live_list = np.array(ws.range(f'H{start_row_load}:H{end_row_load}').value)
-    print("Uniform dead loads:", uniform_dead_list)
-    print("Uniform live loads:", uniform_live_list)
+    logger.debug("Uniform dead loads: %s", uniform_dead_list)
+    logger.debug("Uniform live loads: %s", uniform_live_list)
 
     # Dead and live load cumulative
     dead_load = uniform_dead_list * shear_wall_length_list
     dead_load_cum = np.cumsum(dead_load)
-    print("Cumulative dead load:", dead_load_cum)
+    logger.debug("Cumulative dead load: %s", dead_load_cum)
 
     live_load = uniform_live_list * shear_wall_length_list
     live_load_cum = np.cumsum(live_load)
-    print("Cumulative live load:", live_load_cum)
+    logger.debug("Cumulative live load: %s", live_load_cum)
 
     # ------------------------------------------------------------------------------
     # Wall Self-Weight from Excel (Dynamic Range)
@@ -152,7 +167,7 @@ def indv_shear_wall_analysis(workbook_path=None):
     end_row_weight = start_row_weight + no_of_storey - 1
 
     wall_weight_list = np.array(ws.range(f'D{start_row_weight}:D{end_row_weight}').value)
-    print("Wall weights:", wall_weight_list)
+    logger.debug("Wall weights: %s", wall_weight_list)
 
 
     # ------------------------------------------------------------------------------
@@ -162,7 +177,7 @@ def indv_shear_wall_analysis(workbook_path=None):
     for i in range(len(Force_list)):
         for j in range(i + 1):
             Moment_Lists[i] += Force_list[j] * np.sum(shear_wall_height_list[j:i + 1])
-    print("Moment list:", Moment_Lists)
+    logger.debug("Moment list: %s", Moment_Lists)
 
     # ------------------------------------------------------------------------------
     # Load Case and Force Calculations (Tf and Cf)
@@ -181,8 +196,8 @@ def indv_shear_wall_analysis(workbook_path=None):
     Tf_list = factor * ((Moment_Lists / shear_wall_length_list) - (dead_load_cum / 2))
     Cf_list = factor * ((Moment_Lists / shear_wall_length_list) + ((dead_load_cum + 0.5 * live_load_cum) / 2))
 
-    print("Tf_list:", Tf_list)
-    print("Cf_list:", Cf_list)
+    logger.debug("Tf_list: %s", Tf_list)
+    logger.debug("Cf_list: %s", Cf_list)
 
     
 
@@ -299,9 +314,9 @@ def indv_shear_wall_analysis(workbook_path=None):
                 break  # Stop after first match
 
     # Print and convert to NumPy array
-    print("Factored Resistance values (kN):", factored_resistance_values)
+    logger.debug("Factored Resistance values (kN): %s", factored_resistance_values)
     factored_resistance_array = np.array(factored_resistance_values)
-    print("Factored Resistance Array:", factored_resistance_array)
+    logger.debug("Factored Resistance Array: %s", factored_resistance_array)
 
 
     # Deflection calculation section
@@ -521,11 +536,11 @@ def indv_shear_wall_analysis(workbook_path=None):
     t_upper = wall_weight_list * D_total_list_np**2
     t_lower = Force_list * D_total_list_np
 
-    print("t_upper:", t_upper)
-    print("t_lower:", t_lower)
+    logger.debug("t_upper: %s", t_upper)
+    logger.debug("t_lower: %s", t_lower)
 
     fundamental_period = 2 * math.pi * sqrt(np.sum(t_upper) / (9800 * np.sum(t_lower)))
-    print("Fundamental Period:", fundamental_period)
+    logger.info("Fundamental Period: %s", fundamental_period)
 
     # ------------------------------------------------------------------------------
     # Wall Stiffness Calculation
@@ -541,8 +556,8 @@ def indv_shear_wall_analysis(workbook_path=None):
         stiffness_list.append(stiffness)
 
     average_stiffness = np.average(stiffness_list)
-    print("Storey-wise Stiffness:", stiffness_list)
-    print("Average Wall Stiffness:", average_stiffness)
+    logger.debug("Storey-wise Stiffness: %s", stiffness_list)
+    logger.info("Average Wall Stiffness: %s", average_stiffness)
 
 
 
