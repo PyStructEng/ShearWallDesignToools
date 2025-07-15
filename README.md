@@ -1,6 +1,14 @@
 # ShearWallDesignToools
 This repository contains the master code that is being used by the excel spreadsheet
 
+## Installation
+
+Install the required Python packages using `pip`:
+
+```bash
+pip install -r requirements.txt
+```
+
 ## Logging
 
 The Python modules use the standard `logging` library. The log level can be
